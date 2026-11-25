@@ -10,7 +10,16 @@ import javafx.scene.control.Alert.AlertType;
 import javafx.scene.control.Button;
 import javafx.scene.control.Label;
 import javafx.scene.control.PasswordField;
+import javafx.scene.control.TableColumn;
+import javafx.scene.control.TableView;
 import javafx.scene.control.TextField;
+import javafx.beans.property.SimpleLongProperty;
+import javafx.beans.property.SimpleIntegerProperty;
+import javafx.beans.property.SimpleStringProperty;
+import javafx.collections.FXCollections;
+import javafx.collections.ObservableList;
+import java.io.IOException;
+import java.util.Optional;
 import javafx.scene.layout.GridPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.VBox;
@@ -21,6 +30,10 @@ public class App extends Application {
     // Data akun penjual (sama seperti versi konsol: hanya 1 akun)
     private Penjual penjual = null;
 
+    // Data produk (disimpan ke produk.csv)
+    private final ObservableList<Produk> daftarProduk =
+            FXCollections.observableArrayList();
+
     private Stage stage;
 
     public static void main(String[] args) {
@@ -30,6 +43,7 @@ public class App extends Application {
     @Override
     public void start(Stage primaryStage) {
         this.stage = primaryStage;
+        daftarProduk.setAll(ProdukCsv.muat());
         stage.setTitle("Buzinice - Business Management System");
         tampilkanMenuUtama();
         stage.show();
@@ -232,8 +246,10 @@ public class App extends Application {
         Label lblSelamat = new Label("Selamat datang, " + penjual.getNama());
 
         Button btnProfil = new Button("1. Profil Toko");
-        Button btnLogout = new Button("2. Logout");
+        Button btnProduk = new Button("2. Kelola Produk");
+        Button btnLogout = new Button("3. Logout");
         btnProfil.setPrefWidth(200);
+        btnProduk.setPrefWidth(200);
         btnLogout.setPrefWidth(200);
 
         // Area untuk menampilkan profil toko (awalnya kosong)
@@ -256,18 +272,145 @@ public class App extends Application {
             gridProfil.add(new Label(penjual.getKategoriToko()), 1, 4);
         });
 
+        btnProduk.setOnAction(e -> tampilkanKelolaProduk());
+
         btnLogout.setOnAction(e -> {
             tampilkanAlert(AlertType.INFORMATION, "Logout",
                     "Berhasil logout.");
             tampilkanMenuUtama();
         });
 
-        VBox root = new VBox(15, lblJudul, lblSelamat, btnProfil, btnLogout,
-                gridProfil);
+        VBox root = new VBox(15, lblJudul, lblSelamat, btnProfil, btnProduk,
+                btnLogout, gridProfil);
         root.setAlignment(Pos.CENTER);
         root.setPadding(new Insets(30));
 
         stage.setScene(new Scene(root, 450, 450));
+    }
+
+    // ===== KELOLA PRODUK (tambah & hapus) =====
+    private void tampilkanKelolaProduk() {
+        Label lblJudul = new Label("===== KELOLA PRODUK =====");
+        lblJudul.setStyle("-fx-font-size: 16px; -fx-font-weight: bold;");
+
+        Label lblNama = new Label("Nama produk :");
+        Label lblHarga = new Label("Harga :");
+        Label lblStok = new Label("Stok :");
+        TextField txtNama = new TextField();
+        TextField txtHarga = new TextField();
+        TextField txtStok = new TextField();
+
+        Button btnTambah = new Button("Tambah");
+        Button btnHapus = new Button("Hapus");
+        Button btnKembali = new Button("Kembali");
+
+        GridPane grid = new GridPane();
+        grid.setHgap(10);
+        grid.setVgap(10);
+        grid.setAlignment(Pos.CENTER);
+        grid.add(lblNama, 0, 0);
+        grid.add(txtNama, 1, 0);
+        grid.add(lblHarga, 0, 1);
+        grid.add(txtHarga, 1, 1);
+        grid.add(lblStok, 0, 2);
+        grid.add(txtStok, 1, 2);
+
+        HBox boxTombol = new HBox(10, btnTambah, btnHapus, btnKembali);
+        boxTombol.setAlignment(Pos.CENTER);
+
+        // Tabel daftar produk
+        TableView<Produk> tabel = new TableView<>(daftarProduk);
+        TableColumn<Produk, String> kolNama = new TableColumn<>("Nama");
+        kolNama.setCellValueFactory(
+                d -> new SimpleStringProperty(d.getValue().getNama()));
+        TableColumn<Produk, Number> kolHarga = new TableColumn<>("Harga");
+        kolHarga.setCellValueFactory(
+                d -> new SimpleLongProperty(d.getValue().getHarga()));
+        TableColumn<Produk, Number> kolStok = new TableColumn<>("Stok");
+        kolStok.setCellValueFactory(
+                d -> new SimpleIntegerProperty(d.getValue().getStok()));
+        kolNama.setPrefWidth(200);
+        kolHarga.setPrefWidth(120);
+        kolStok.setPrefWidth(80);
+        tabel.getColumns().add(kolNama);
+        tabel.getColumns().add(kolHarga);
+        tabel.getColumns().add(kolStok);
+        tabel.setPrefHeight(200);
+
+        // ----- TAHAP 2: Event Handling -----
+        btnTambah.setOnAction(e -> {
+            String nama = txtNama.getText().trim();
+            String hargaStr = txtHarga.getText().trim();
+            String stokStr = txtStok.getText().trim();
+
+            // ----- TAHAP 3: Validasi kolom kosong -----
+            if (nama.isEmpty() || hargaStr.isEmpty() || stokStr.isEmpty()) {
+                tampilkanAlert(AlertType.WARNING, "Validasi",
+                        "Semua kolom wajib diisi!");
+                return;
+            }
+
+            try {
+                long harga = Long.parseLong(hargaStr);
+                int stok = Integer.parseInt(stokStr);
+                if (harga < 0 || stok < 0) {
+                    tampilkanAlert(AlertType.WARNING, "Validasi",
+                            "Harga dan stok tidak boleh negatif!");
+                    return;
+                }
+                daftarProduk.add(new Produk(nama, harga, stok));
+                ProdukCsv.simpan(daftarProduk);
+                txtNama.clear();
+                txtHarga.clear();
+                txtStok.clear();
+                tampilkanAlert(AlertType.INFORMATION, "Produk",
+                        "Produk berhasil ditambahkan!");
+            } catch (NumberFormatException ex) {
+                tampilkanAlert(AlertType.WARNING, "Validasi",
+                        "Harga dan stok harus berupa angka!");
+            } catch (IOException ex) {
+                tampilkanAlert(AlertType.ERROR, "Error",
+                        "Gagal menyimpan ke produk.csv: " + ex.getMessage());
+            }
+        });
+
+        btnHapus.setOnAction(e -> {
+            Produk dipilih = tabel.getSelectionModel().getSelectedItem();
+            if (dipilih == null) {
+                tampilkanAlert(AlertType.WARNING, "Hapus Produk",
+                        "Pilih produk yang ingin dihapus terlebih dahulu!");
+                return;
+            }
+
+            Alert konfirmasi = new Alert(AlertType.CONFIRMATION);
+            konfirmasi.setTitle("Hapus Produk");
+            konfirmasi.setHeaderText(null);
+            konfirmasi.setContentText("Hapus produk \"" + dipilih.getNama()
+                    + "\"?");
+            Optional<javafx.scene.control.ButtonType> hasil =
+                    konfirmasi.showAndWait();
+            if (hasil.isPresent()
+                    && hasil.get() == javafx.scene.control.ButtonType.OK) {
+                try {
+                    daftarProduk.remove(dipilih);
+                    ProdukCsv.simpan(daftarProduk);
+                    tampilkanAlert(AlertType.INFORMATION, "Produk",
+                            "Produk berhasil dihapus!");
+                } catch (IOException ex) {
+                    tampilkanAlert(AlertType.ERROR, "Error",
+                            "Gagal menyimpan ke produk.csv: "
+                            + ex.getMessage());
+                }
+            }
+        });
+
+        btnKembali.setOnAction(e -> tampilkanDashboard());
+
+        VBox root = new VBox(15, lblJudul, grid, boxTombol, tabel);
+        root.setAlignment(Pos.CENTER);
+        root.setPadding(new Insets(20));
+
+        stage.setScene(new Scene(root, 450, 550));
     }
 
     // =====================================================
